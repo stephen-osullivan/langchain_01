@@ -1,4 +1,6 @@
-python-dotenv
+beautifulsoup4
+chromadb
 langchain
 langchain-openai
+python-dotenv
 streamlit
