@@ -1,32 +1,55 @@
-from transformers import pipeline
+from dotenv import load_dotenv
+from fastapi import FastAPI
 from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-import streamlit as st
+from langserve import add_routes
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers.pipelines import pipeline
+import uvicorn
 
 import os
 
-## prompt template
-prompt = ChatPromptTemplate.from_messages(
-    [
-        ('system', "You are a useful and attentive assitant. Please respond to user queries."),
-        ("human", "Question:{question}"),
-    ]
+load_dotenv()
+## prompt template specifically for GEMMA
+prompt = PromptTemplate.from_template(
+"""
+<bos><start_of_turn>user
+{question}<end_of_turn>
+<start_of_turn>model
+"""
 )
 
+    
+model_id = 'google/gemma-2b-it'
+tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir ='models/')
+print('Loaded Tokenizer')
+model = AutoModelForCausalLM.from_pretrained(model_id, cache_dir ='models/', torch_dtype = torch.float16)
+print('Loaded Model')
+
 # Load the Hugging Face model (replace with your desired model)
-llm = HuggingFacePipeline.from_model_id(
-    model_id="gpt2",
-    task="text-generation",
-    pipeline_kwargs={"max_new_tokens": 50},
-    device=0)  # -1 for CPU
 
-output_parser = StrOutputParser()
-chain = prompt|llm|output_parser
+pipe = pipeline(
+    "text-generation", model=model, tokenizer=tokenizer, max_new_tokens=200, device='cuda',
+)
+llm = HuggingFacePipeline(pipeline=pipe)
 
-## streamlit
-st.title('Langchain Chatbot using Hugging Face')
-input_text = st.text_input("Please enter query")
 
-if input_text:
-    st.write(chain.invoke({'question':input_text}))
+chain = prompt|llm
+### FAST API APP
+app = FastAPI(
+    title='Langchain Server',
+    version='1.0',
+    description='A Simple API Server',
+)
+
+### LANGSERVE route
+add_routes(
+    app,
+    chain,
+    path = "/llm",
+)
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="localhost", port=8000)

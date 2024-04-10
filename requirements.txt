@@ -1,3 +1,4 @@
+accelerate
 bitsandbytes>=0.39.0
 beautifulsoup4
 chromadb
